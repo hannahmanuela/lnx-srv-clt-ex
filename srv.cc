@@ -25,7 +25,7 @@ using namespace std::chrono;
 
 #define SRV_LISTEN_PORT 8080
 #define WRK_SLC 5
-#define SRV_SLC 5
+#define SRV_SLC 50
 #define NSEC_PER_MSEC 1000000
 
 // can also include #include <linux/sched/types.h>, but then we get known include errors with sched_param being double defined
@@ -55,16 +55,16 @@ int time_since(high_resolution_clock::time_point start) {
     return 1000 * time_span.count();  // 1000 => shows millisec; 1000000 => shows microsec
 }
 
-// 170 ms
-int mid_fac() {
+// 50 ms
+int short_fac() {
 
     high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
     long long sum = 0;
-    for (long long i = 0; i < 50000000; i++) {
+    for (long long i = 0; i < 10000000; i++) {
         sum = 3 * i + 1;
     }
 
-    cout << "mid run: " << time_since(start) << "ms" << endl;
+    cout << "short run: " << time_since(start) << "ms" << endl;
 
     return sum;
 }
@@ -98,8 +98,6 @@ void run_workload(vector<int> *pids) {
             perror("ERROR: sched_setattr");
         }
 
-        cout << getpid() << ": setattr done after " << time_since(spawn_time) << endl;
-
         // cout << "set sched_runtime to be " << rt_to_use << endl;
         // set child affinity - they will both run on cpu 1
         cpu_set_t  mask;
@@ -112,7 +110,7 @@ void run_workload(vector<int> *pids) {
         high_resolution_clock::time_point work_start = high_resolution_clock::now();
         cout << getpid() << ": starting work after " << time_since(spawn_time) << endl;
         
-        mid_fac();
+        short_fac();
 
         cout << getpid() << ": done working after " << time_since(spawn_time) << ", having used "<< time_since(work_start) << "ms to do its work" << endl;
 
@@ -126,6 +124,15 @@ void run_workload(vector<int> *pids) {
 
 void run_server() {
 
+    // set CPU mask
+    cpu_set_t  mask;
+    CPU_ZERO(&mask);
+    CPU_SET(1, &mask);
+    if ( sched_setaffinity(0, sizeof(mask), &mask) > 0) {
+        cout << "set affinity had an error" << endl;
+    }
+
+    // set slice
     struct sched_attr attr;
     int ret = syscall(SYS_sched_getattr, getpid(), &attr, sizeof(attr), 0);;
     if (ret < 0) {
